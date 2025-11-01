@@ -1,6 +1,6 @@
-# Base environment file - works on all platforms (macOS, Linux, Windows)
-# - macOS: Automatically includes MPS (Metal Performance Shaders) GPU support
-# - Linux/Windows: CPU-only (for GPU support, use environment-cuda.yml instead)
+# Environment file for Linux/Windows with NVIDIA GPU support (CUDA 12.4)
+# DO NOT USE ON macOS - CUDA is not available on macOS
+# For macOS, use environment.yml instead (includes MPS support automatically)
 #
 name: rlbook
 channels:
@@ -12,6 +12,7 @@ dependencies:
   - pytorch
   - torchvision
   - torchaudio
+  - pytorch-cuda=12.4
   - tensorboard
   - numpy
   - matplotlib
