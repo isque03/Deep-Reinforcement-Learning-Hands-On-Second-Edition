@@ -6,23 +6,18 @@ import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from ignite.engine import Engine, Events
-from ignite.metrics import RunningAverage
-from ignite.contrib.handlers import tensorboard_logger as tb_logger
+from tensorboardX import SummaryWriter
 
 import torchvision.utils as vutils
 
 import gymnasium as gym
-import ale_py
+import gymnasium.spaces
 
 import numpy as np
 
 import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-
-gym.register_envs(ale_py)
 
 LATENT_VECTOR_SIZE = 100
 DISCR_FILTERS = 64
@@ -45,17 +40,17 @@ class InputWrapper(gym.ObservationWrapper):
     """
     def __init__(self, *args):
         super(InputWrapper, self).__init__(*args)
-        assert isinstance(self.observation_space, gym.spaces.Box)
+        assert isinstance(self.observation_space, gymnasium.spaces.Box)
         old_space = self.observation_space
-        self.observation_space = gym.spaces.Box(
-            self.observation(old_space.low), 
+        self.observation_space = gymnasium.spaces.Box(
+            self.observation(old_space.low),
             self.observation(old_space.high),
-            dtype=np.float32
-        )
+            dtype=np.float32)
 
     def observation(self, observation):
         # resize image
-        new_obs = cv2.resize(observation, (IMAGE_SIZE, IMAGE_SIZE))
+        new_obs = cv2.resize(
+            observation, (IMAGE_SIZE, IMAGE_SIZE))
         # transform (210, 160, 3) -> (3, 210, 160)
         new_obs = np.moveaxis(new_obs, 2, 0)
         return new_obs.astype(np.float32)
@@ -122,13 +117,12 @@ class Generator(nn.Module):
 
 
 def iterate_batches(envs, batch_size=BATCH_SIZE):
-    batch = [e.reset()[0] for e in envs]
+    batch = []
     env_gen = iter(lambda: random.choice(envs), None)
 
     while True:
         e = next(env_gen)
-        obs, reward, terminated, truncated, _ = e.step(e.action_space.sample())
-        is_done = terminated or truncated
+        obs, reward, terminated, truncated, info = e.step(e.action_space.sample())
         if np.mean(obs) > 0.01:
             batch.append(obs)
         if len(batch) == batch_size:
@@ -136,84 +130,92 @@ def iterate_batches(envs, batch_size=BATCH_SIZE):
             batch_np = np.array(batch, dtype=np.float32) * 2.0 / 255.0 - 1.0
             yield torch.tensor(batch_np)
             batch.clear()
-        if is_done:
+        if terminated or truncated:
             e.reset()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cuda", default=False, action='store_true', help="Enable cuda computation")
+    parser.add_argument(
+        "--cuda", default=False, action='store_true',
+        help="Enable cuda computation")
     args = parser.parse_args()
 
     device = torch.device("cuda" if args.cuda else "cpu")
-    envs = [InputWrapper(gym.make(name, render_mode=None)) for name in ('ALE/Breakout-v5', 'ALE/AirRaid-v5', 'ALE/Pong-v5')]
+    
+    # Use CartPole with rendering for demonstration
+    envs = [
+        InputWrapper(gym.make("CartPole-v1", render_mode="rgb_array"))
+        for _ in range(3)  # Create 3 instances
+    ]
     input_shape = envs[0].observation_space.shape
 
     net_discr = Discriminator(input_shape=input_shape).to(device)
     net_gener = Generator(output_shape=input_shape).to(device)
 
     objective = nn.BCELoss()
-    gen_optimizer = optim.Adam(params=net_gener.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
-    dis_optimizer = optim.Adam(params=net_discr.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
+    gen_optimizer = optim.Adam(
+        params=net_gener.parameters(), lr=LEARNING_RATE,
+        betas=(0.5, 0.999))
+    dis_optimizer = optim.Adam(
+        params=net_discr.parameters(), lr=LEARNING_RATE,
+        betas=(0.5, 0.999))
+    writer = SummaryWriter()
+
+    gen_losses = []
+    dis_losses = []
+    iter_no = 0
 
     true_labels_v = torch.ones(BATCH_SIZE, device=device)
     fake_labels_v = torch.zeros(BATCH_SIZE, device=device)
 
-    def process_batch(trainer, batch):
-        gen_input_v = torch.FloatTensor(
-            BATCH_SIZE, LATENT_VECTOR_SIZE, 1, 1)
-        gen_input_v.normal_(0, 1)
-        gen_input_v = gen_input_v.to(device)
-        batch_v = batch.to(device)
-        gen_output_v = net_gener(gen_input_v)
+    print("Starting GAN training...")
+    print("Press Ctrl+C to stop")
 
-        # train discriminator
-        dis_optimizer.zero_grad()
-        dis_output_true_v = net_discr(batch_v)
-        dis_output_fake_v = net_discr(gen_output_v.detach())
-        dis_loss = objective(dis_output_true_v, true_labels_v) + \
-                   objective(dis_output_fake_v, fake_labels_v)
-        dis_loss.backward()
-        dis_optimizer.step()
+    try:
+        for batch_v in iterate_batches(envs):
+            # fake samples, input is 4D: batch, filters, x, y
+            gen_input_v = torch.FloatTensor(
+                BATCH_SIZE, LATENT_VECTOR_SIZE, 1, 1)
+            gen_input_v.normal_(0, 1)
+            gen_input_v = gen_input_v.to(device)
+            batch_v = batch_v.to(device)
+            gen_output_v = net_gener(gen_input_v)
 
-        # train generator
-        gen_optimizer.zero_grad()
-        dis_output_v = net_discr(gen_output_v)
-        gen_loss = objective(dis_output_v, true_labels_v)
-        gen_loss.backward()
-        gen_optimizer.step()
+            # train discriminator
+            dis_optimizer.zero_grad()
+            dis_output_true_v = net_discr(batch_v)
+            dis_output_fake_v = net_discr(gen_output_v.detach())
+            dis_loss = objective(dis_output_true_v, true_labels_v) + \
+                       objective(dis_output_fake_v, fake_labels_v)
+            dis_loss.backward()
+            dis_optimizer.step()
+            dis_losses.append(dis_loss.item())
 
-        if trainer.state.iteration % SAVE_IMAGE_EVERY_ITER == 0:
-            fake_img = vutils.make_grid(
-                gen_output_v.data[:64], normalize=True)
-            trainer.tb.writer.add_image(
-                "fake", fake_img, trainer.state.iteration)
-            real_img = vutils.make_grid(
-                batch_v.data[:64], normalize=True)
-            trainer.tb.writer.add_image(
-                "real", real_img, trainer.state.iteration)
-            trainer.tb.writer.flush()
-        return dis_loss.item(), gen_loss.item()
+            # train generator
+            gen_optimizer.zero_grad()
+            dis_output_v = net_discr(gen_output_v)
+            gen_loss_v = objective(dis_output_v, true_labels_v)
+            gen_loss_v.backward()
+            gen_optimizer.step()
+            gen_losses.append(gen_loss_v.item())
 
-    engine = Engine(process_batch)
-    tb = tb_logger.TensorboardLogger(log_dir=None)
-    engine.tb = tb
-    RunningAverage(output_transform=lambda out: out[1]).\
-        attach(engine, "avg_loss_gen")
-    RunningAverage(output_transform=lambda out: out[0]).\
-        attach(engine, "avg_loss_dis")
-
-    handler = tb_logger.OutputHandler(tag="train",
-        metric_names=['avg_loss_gen', 'avg_loss_dis'])
-    tb.attach(engine, log_handler=handler,
-              event_name=Events.ITERATION_COMPLETED)
-
-    @engine.on(Events.ITERATION_COMPLETED)
-    def log_losses(trainer):
-        if trainer.state.iteration % REPORT_EVERY_ITER == 0:
-            log.info("%d: gen_loss=%f, dis_loss=%f",
-                     trainer.state.iteration,
-                     trainer.state.metrics['avg_loss_gen'],
-                     trainer.state.metrics['avg_loss_dis'])
-
-    engine.run(data=iterate_batches(envs))
+            iter_no += 1
+            if iter_no % REPORT_EVERY_ITER == 0:
+                log.info("Iter %d: gen_loss=%.3e, dis_loss=%.3e",
+                         iter_no, np.mean(gen_losses),
+                         np.mean(dis_losses))
+                writer.add_scalar(
+                    "gen_loss", np.mean(gen_losses), iter_no)
+                writer.add_scalar(
+                    "dis_loss", np.mean(dis_losses), iter_no)
+                gen_losses = []
+                dis_losses = []
+            if iter_no % SAVE_IMAGE_EVERY_ITER == 0:
+                writer.add_image("fake", vutils.make_grid(
+                    gen_output_v.data[:64], normalize=True), iter_no)
+                writer.add_image("real", vutils.make_grid(
+                    batch_v.data[:64], normalize=True), iter_no)
+    except KeyboardInterrupt:
+        print("\nTraining stopped by user")
+        writer.close()
