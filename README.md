@@ -14,8 +14,9 @@ At the moment, there are the following branches available:
 * `torch-1.3-book`: code printed in the book with minor bug fixes. Uses pytorch=1.3 which 
 is available only on conda repos.
 * `torch-1.7`: pytorch 1.7. This branch was tested and merged into master.
+* `torch-2.6`: pytorch 2.6.0 with Python 3.11. Includes platform-specific environment files for macOS (MPS support) and Linux/Windows (CUDA support). This branch maintains compatibility with modern dependencies.
 
-All the branches uses python 3.7, more recent versions weren't tested.
+**Note**: Older branches use python 3.7. The `torch-2.6` branch uses python 3.11.
 
 ## Dependencies installation
 
