@@ -19,13 +19,30 @@ All the branches uses python 3.7, more recent versions weren't tested.
 
 ## Dependencies installation
 
-Anaconda is recommended for virtual environment creation.
-Once installed, the following steps will install everything needed:
+### Option 1: Using Conda Environment (Recommended)
+
+The easiest way to set up all dependencies is using the provided conda environment file:
+
+```bash
+# Clone and navigate to the repository
+git clone https://github.com/PacktPublishing/Deep-Reinforcement-Learning-Hands-On-Second-Edition.git
+cd Deep-Reinforcement-Learning-Hands-On-Second-Edition
+
+# Create conda environment from environment.yml
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate rlbook
+```
+
+### Option 2: Manual Installation
+
+If you prefer manual installation, use conda/pip as follows:
 
 * change directory to book repository dir: `cd Deep-Reinforcement-Learning-Hands-On-Second-Edition`
-* create virtual environment with `conda create -n rlbook python=3.7`
+* create virtual environment with `conda create -n rlbook python=3.11`
 * activate it: `conda activate rlbook`
-* install pytorch (update CUDA version according to your CUDA): `conda install pytorch==1.7 torchvision torchaudio cudatoolkit=10.2 -c pytorch`
-* install rest of dependencies: `pip install requirements.txt`
+* install pytorch (update CUDA version according to your CUDA): `conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia`
+* install rest of dependencies: `pip install -r requirements.txt`
 
 Now you're ready to launch and experiment with examples!

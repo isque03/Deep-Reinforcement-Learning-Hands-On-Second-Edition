@@ -1,0 +1,29 @@
+name: rlbook
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.4
+  - tensorboard
+  - numpy
+  - matplotlib
+  - pip
+  - pip:
+    - atari-py==0.2.9
+    - gym==0.26.2
+    - gymnasium==1.2.0
+    - opencv-python==4.12.0.88
+    - tensorboardx==2.6.4
+    - pytorch-ignite==0.5.1
+    - ptan==0.7
+    - nltk==3.8.1
+    - pybullet==3.2.6
+    - tensorflow==2.17.1
+    - torch==2.6.0
+    - torchvision==0.21.0
+    - torchaudio==2.6.0

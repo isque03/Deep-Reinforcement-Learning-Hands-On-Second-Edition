@@ -3,3 +3,6 @@
 runs
 __pycache__
 *.dat
+checkpoint_iter_*.pth
+environment-full.yml
+.cursor/
